@@ -26,11 +26,14 @@ from core.image_ops import auto_white_balance, resize_image
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
 
 
-def load_rgb(path: Path) -> np.ndarray:
+def load_rgb(path: Path) -> tuple[np.ndarray, bytes | None]:
     img = Image.open(path)
     img = ImageOps.exif_transpose(img)
+    # exif_transpose already normalizes the Orientation tag to match the
+    # rotated pixels, so these bytes are safe to reattach on export as-is.
+    exif_bytes = img.info.get("exif")
     img = img.convert("RGB")
-    return np.array(img)
+    return np.array(img), exif_bytes
 
 
 def rgb_to_pixmap(rgb: np.ndarray) -> QPixmap:
@@ -49,6 +52,7 @@ class MainWindow(QMainWindow):
         self.current_path: Path | None = None
         self.original_rgb: np.ndarray | None = None
         self.working_rgb: np.ndarray | None = None
+        self.original_exif: bytes | None = None
         self._updating_aspect = False
 
         self._build_ui()
@@ -147,7 +151,7 @@ class MainWindow(QMainWindow):
             return
         path = Path(current.data(Qt.UserRole))
         self.current_path = path
-        self.original_rgb = load_rgb(path)
+        self.original_rgb, self.original_exif = load_rgb(path)
         self.working_rgb = self.original_rgb
         self.wb_checkbox.blockSignals(True)
         self.wb_checkbox.setChecked(False)
@@ -205,7 +209,10 @@ class MainWindow(QMainWindow):
         )
         if not save_path:
             return
-        Image.fromarray(result).save(save_path, quality=95)
+        save_kwargs = {"quality": 95}
+        if self.original_exif:
+            save_kwargs["exif"] = self.original_exif
+        Image.fromarray(result).save(save_path, **save_kwargs)
         QMessageBox.information(self, "Exported", f"Saved to {save_path}")
 
     def resizeEvent(self, event):
