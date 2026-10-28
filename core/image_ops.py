@@ -45,6 +45,26 @@ def resize_image(image: np.ndarray, width: int, height: int) -> np.ndarray:
     return cv2.resize(image, (width, height), interpolation=interpolation)
 
 
+def apply_exposure_contrast(image: np.ndarray, exposure: float, contrast: float) -> np.ndarray:
+    """Apply a simple exposure (brightness) and contrast adjustment.
+
+    exposure: roughly -1.0 (much darker) to 1.0 (much brighter), 0 = no change.
+        Applied as a 2**exposure multiplicative gain (photographic stops).
+    contrast: roughly -1.0 (flatten) to 1.0 (punchier), 0 = no change.
+        Applied as a scale pivoted around mid-gray.
+
+    Pure pixel math on the array as given -- runs at whatever resolution
+    the caller passes in, so applying this to the full-resolution original
+    loses no quality.
+    """
+    img = image.astype(np.float32)
+    gain = 2.0 ** np.clip(exposure, -2.0, 2.0)
+    img = img * gain
+    contrast_factor = 1.0 + np.clip(contrast, -1.0, 1.0)
+    img = (img - 127.5) * contrast_factor + 127.5
+    return np.clip(img, 0, 255).astype(np.uint8)
+
+
 def resize_to_long_edge(image: np.ndarray, long_edge: int) -> np.ndarray:
     """Resize keeping aspect ratio so the longer side equals long_edge."""
     h, w = image.shape[:2]
